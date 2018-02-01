@@ -18,7 +18,7 @@ import random
 
 # Complete pre-processing function
 
-def process_text(text, vocab_size, batch_size):
+def process_text(text, vocab_size, window_size):
     """
     Pre-process data before in a convenient way
     :param text: raw text document to be process
@@ -29,9 +29,9 @@ def process_text(text, vocab_size, batch_size):
 
     text_list = convert_text(text)  # converts document into a list of words
     data, word_to_index, index_to_word, _ = building_dataset(text=text_list, vocab_size=vocab_size)
-    X, y = data_train(data, window_size=batch_size-1, nb_draws=batch_size-1)
+    X, y = data_train(data, window_size=window_size-1, nb_draws=window_size-1)
 
-    return X, y
+    return X, y, word_to_index, index_to_word
 
 
 # Convert document into a list of word
@@ -102,7 +102,7 @@ def data_train(data, window_size=2, nb_draws=2):
     :param data: list
     :param window_size: size of the window around input word
     :param nb_draws: number of context words to be drawn to construct the context word
-    :return: x [n_samples, n_draws], y [n_samples, n_draws]
+    :return: x [n_samples, n_draws], y [n_samples, 1]
     """
 
     x = np.ndarray(shape=(len(data), nb_draws), dtype=np.int32)   # matrix of context words
@@ -130,24 +130,29 @@ def data_train(data, window_size=2, nb_draws=2):
 
         x[i] = context_words
         y[i] = target_word
+        y = y[:, 0]
 
     return x, y
 
 
 # create batch data
 
-def make_batch(x_train, y_train):
+def make_batch(x_train, y_train, K=5):
     """
     Create batches for learning
-    :param x_train: array of one-hot representation of training inputs [len(data), vocab_size]
-    :param y_train: array of one-hot representation of training context words [len(data), vocab_size]
-    :param batch_size: size of batches
-    :return:
+    :param x_train: array of training inputs [len(data), vocab_size]
+    :param y_train: array of training context words [len(data), vocab_size]
+    :param K: number of negative sampling
+    :return: x_batch [size = batch_size], y_batch [size = 1+K]
     """
 
-    batch_indexes = np.random.choice(len(x_train[0]) - 1)
-    x_batch = x_train[batch_indexes, :]
-    y_batch = y_train[batch_indexes, :]
+    batch_index = np.random.choice(len(x_train[0]) - 1)
+    x_batch = x_train[batch_index, :]
+    y_batch = y_train[batch_index]
+
+    # select K negative samples
+    negative_samples = np.random.choice([y for y in y_train if (y not in x_batch) & (y != y_train[0])], K)
+    y_batch = np.append(y_batch, negative_samples)  # add negative samples to y_batch
 
     return x_batch, y_batch
 
