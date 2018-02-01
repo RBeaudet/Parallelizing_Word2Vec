@@ -137,17 +137,22 @@ def data_train(data, window_size=2, nb_draws=2):
 
 # create batch data
 
-def make_batch(x_train, y_train):
+def make_batch(x_train, y_train, K=5):
     """
     Create batches for learning
     :param x_train: array of training inputs [len(data), vocab_size]
     :param y_train: array of training context words [len(data), vocab_size]
-    :return: x_batch [1, batch_size], y_batch [1x1]
+    :param K: number of negative sampling
+    :return: x_batch [size = batch_size], y_batch [size = 1+K]
     """
 
-    batch_indexes = np.random.choice(len(x_train[0]) - 1)
-    x_batch = x_train[batch_indexes, :]
-    y_batch = y_train[batch_indexes]
+    batch_index = np.random.choice(len(x_train[0]) - 1)
+    x_batch = x_train[batch_index, :]
+    y_batch = y_train[batch_index]
+
+    # select K negative samples
+    negative_samples = np.random.choice([y for y in y_train if (y not in x_batch) & (y != y_train[0])], K)
+    y_batch = np.append(y_batch, negative_samples)  # add negative samples to y_batch
 
     return x_batch, y_batch
 

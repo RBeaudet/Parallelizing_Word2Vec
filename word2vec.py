@@ -20,9 +20,11 @@ class Word2Vec(object):
                                                                               vocab_size=self.vocab_size,
                                                                               window_size=self.window_size)
 
+        # Input layer weights
         self.M_in = np.random.uniform(low=-1.0, high=1.0, size=(self.vocab_size, self.embedding_size))
         self.b_in = np.zeros(self.embedding_size)
 
+        # Output layer weights
         self.M_out = np.random.uniform(low=-1.0, high=1.0, size=(self.embedding_size, self.vocab_size))
         self.b_out = np.zeros(self.vocab_size)
 
