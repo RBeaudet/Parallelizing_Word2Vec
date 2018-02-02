@@ -13,7 +13,8 @@ import numpy as np
 from nltk.corpus import stopwords
 import string
 from collections import Counter
-import random
+from numpy import random
+from threading import Thread
 
 
 # Complete pre-processing function
@@ -43,15 +44,14 @@ def convert_text(text):
     :return: text_list (list)
     """
 
-    text = text.lower()
-    text = text.split()
-    text_list = [word.strip(string.punctuation) for word in text.split()]
+    with open(text, 'r') as file:
+        text = file.read().translate(str.maketrans(string.punctuation, ' '*len(string.punctuation)))
 
+    text_list = text.lower().split()
+
+    # deleting stopwords
     stop_words = set(stopwords.words('english'))
-
-    for index, word in enumerate(text_list):
-        if word in stop_words:
-            del text_list[index]
+    text_list = [word for word in text_list if word not in stop_words]
 
     return text_list
 
@@ -66,25 +66,26 @@ def building_dataset(text, vocab_size):
     :return: data (text where each word is replaced by its index), occurrence, dictionary
     """
 
-    occurrence = Counter(text).most_common(vocab_size - 1)  # list of (word, occurrence)
-    occurrence.append(['ukn', 0])                           # add couple (unknown, 0)
+    occurrence = [['ukn', 0]] + Counter(text).most_common(vocab_size - 1)  # list of (word, occurrence)
 
-    word_to_index = dict()                                  # dictionary of couples (word, index)
-    word_to_index['ukn'] = -1
+    # dictionary of couples (word, index)
+    word_to_index = dict()
+    # dictionary of couples (index, word)
+    index_to_word = dict()
 
-    index_to_word = dict()                                  # dictionary of couples (index, word)
-    index_to_word[-1] = 'ukn'
-
-    for index, word in enumerate(occurrence, 1):
+    for index, word in enumerate(occurrence):
         key = word[0]
         word_to_index[key] = index
         index_to_word[index] = key
 
     for word in text:
-        if word not in word_to_index:                       # if a word does not belong to the vocabulary
-            occurrence[vocab_size][1] += 1                  # then add 1 occurrence to 'ukn'
+        # if a word does not belong to the vocabulary
+        if word not in word_to_index:
+            # then add 1 occurrence to 'ukn'
+            occurrence[0][1] += 1
 
-    data = list()                                           # creates data where each word is replaced by its index
+    # creates data where each word is replaced by its index
+    data = list()
     for word in text:
         if word in word_to_index:
             data.append(word_to_index[word])
@@ -106,31 +107,33 @@ def data_train(data, window_size=2, nb_draws=2):
     """
 
     x = np.ndarray(shape=(len(data), nb_draws), dtype=np.int32)   # matrix of context words
-    y = np.ndarray(shape=(len(data), nb_draws), dtype=np.int32)   # matrix of target words
+    y = np.ndarray(shape=(len(data),), dtype=np.int32)   # matrix of target words
 
     for i in range(len(data)):
 
         # Create target word
-        target_word = np.ndarray(shape=(nb_draws,), dtype=np.int32)
+        target_word = data[i]
 
         if i < window_size:
             # Create context words
-            window = data[:window_size]
-            context_words = random.sample(window, nb_draws)
+            window = data[:(i + 1 + window_size)]
+            del window[i]
+            context_words = random.choice(window, nb_draws, replace=True)
 
         elif i > len(data)-window_size:
             # Create context words
-            window = data[len(data) - window_size:]
-            context_words = random.sample(window, nb_draws)
+            window = data[(i - window_size):]
+            del window[window_size]
+            context_words = random.choice(window, nb_draws, replace=True)
 
         else:
-            window = data[i - window_size: i + window_size + 1]
-            del window[window_size]                               # remove central word
-            context_words = random.sample(window, nb_draws)
+            window = data[i - window_size: (i + window_size + 1)]
+            # remove central word
+            del window[window_size]
+            context_words = random.choice(window, nb_draws)
 
-        x[i] = context_words
+        x[i, :] = context_words
         y[i] = target_word
-        y = y[:, 0]
 
     return x, y
 
@@ -146,7 +149,7 @@ def make_batch(x_train, y_train, K=5):
     :return: x_batch [size = batch_size], y_batch [size = 1+K]
     """
 
-    batch_index = np.random.choice(len(x_train[0]) - 1)
+    batch_index = random.choice(x_train.shape[0] - 1)
     x_batch = x_train[batch_index, :]
     y_batch = y_train[batch_index]
 
@@ -172,3 +175,42 @@ def one_hot_vector(index, vocab_size):
 
     return temp
 
+# training
+
+class stopable_thread(Thread):
+    '''
+    A slight modification of the Thread class so threads can be easily stopable
+    '''
+
+    def __init__(self, target, args):
+        Thread.__init__(self, target, args)
+
+    def run(self):
+        try:
+            if self._target:
+                self.keepRunning = True
+                while self.keepRunning:
+                    self._target(*self._args, **self._kwargs)
+
+        finally:
+            # Avoid a refcycle if the thread is running a function with
+            # an argument that has a member that points to the thread.
+            del self._target, self._args, self._kwargs
+
+if __name__ == '__main__':
+    import parameters
+
+    params = getattr(parameters, 'debug_text')
+    text_list = convert_text(params['file'])
+    #print(text_list)
+    data, word_to_index, index_to_word, occurence = building_dataset(text=text_list, vocab_size=params['vocab_size'])
+    #print(data)
+    #print(word_to_index)
+    #print(index_to_word)
+    #print(occurence)
+    X, y = data_train(data, window_size=params['window_size'], nb_draws=2*params['window_size'])
+    #print(X)
+    print(y)
+    X_batch, y_batch = make_batch(X, y, K=params['n_negative'])
+    print(X_batch)
+    print(y_batch)
