@@ -30,7 +30,7 @@ def process_text(text, vocab_size, window_size):
 
     text_list = convert_text(text)  # converts document into a list of words
     data, word_to_index, index_to_word, _ = building_dataset(text=text_list, vocab_size=vocab_size)
-    X, y = data_train(data, window_size=window_size-1, nb_draws=window_size-1)
+    X, y = data_train(data, window_size=window_size, nb_draws=2*window_size)
 
     return X, y, word_to_index, index_to_word
 
@@ -120,7 +120,7 @@ def data_train(data, window_size=2, nb_draws=2):
             del window[i]
             context_words = random.choice(window, nb_draws, replace=True)
 
-        elif i > len(data)-window_size:
+        elif i >= len(data)-window_size:
             # Create context words
             window = data[(i - window_size):]
             del window[window_size]
@@ -130,7 +130,7 @@ def data_train(data, window_size=2, nb_draws=2):
             window = data[i - window_size: (i + window_size + 1)]
             # remove central word
             del window[window_size]
-            context_words = random.choice(window, nb_draws)
+            context_words = random.choice(window, nb_draws, replace=False)
 
         x[i, :] = context_words
         y[i] = target_word
@@ -177,13 +177,15 @@ def one_hot_vector(index, vocab_size):
 
 # training
 
-class stopable_thread(Thread):
+class stoppable_thread(Thread):
     '''
-    A slight modification of the Thread class so threads can be easily stopable
+    A slight modification of the Thread class so threads can be easily stoppable
     '''
 
     def __init__(self, target, args):
-        Thread.__init__(self, target, args)
+        Thread.__init__(self, group=None, target=target, args=args)
+        Thread.daemon = True
+
 
     def run(self):
         try:
@@ -196,6 +198,7 @@ class stopable_thread(Thread):
             # Avoid a refcycle if the thread is running a function with
             # an argument that has a member that points to the thread.
             del self._target, self._args, self._kwargs
+
 
 if __name__ == '__main__':
     import parameters
@@ -210,7 +213,7 @@ if __name__ == '__main__':
     #print(occurence)
     X, y = data_train(data, window_size=params['window_size'], nb_draws=2*params['window_size'])
     #print(X)
-    print(y)
+    #print(y)
     X_batch, y_batch = make_batch(X, y, K=params['n_negative'])
     print(X_batch)
     print(y_batch)

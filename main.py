@@ -15,5 +15,9 @@ def main(text):
 
     w2v.fit(n_iter=params['n_iter'], num_proc=params['num_proc'])
 
+
+
 if __name__ == '__main__':
     main('debug_text')
+
+
