@@ -10,7 +10,7 @@ import numpy as np
 from utils import make_batch, stoppable_thread
 
 
-def Hogwild(X, y, n_iter, M_in, M_out, embedding_size, learning_rate, num_proc=2):
+def Hogwild(X, y, n_iter, M_in, M_out, embedding_size, learning_rate, K, num_proc=2):
     '''
     Implementation of the Hogwild algorithm for Word2Vec
     :param X_train: (np array) one line is a window
@@ -38,16 +38,15 @@ def Hogwild(X, y, n_iter, M_in, M_out, embedding_size, learning_rate, num_proc=2
     # Note that workers never wait for each other, even at the end of batches, this is allowed by the sparsity of
     # The target function in X, y
     for iter in range(n_iter):
-        X_batch, y_batch = make_batch(X, y, X.shape[1])
-        for _ in range(len(X_batch)-1):
-            q.put([X_batch[_], y_batch])
+        X_batch, y_batch = make_batch(X, y, K)
+        for _ in range(len(X_batch)):
+            q.put([X_batch[_], y_batch[_, :]])
+
+    q.join()
 
     # Shutting down threads
     for worker in workers:
         worker.keepRunning = False
-
-    for worker in workers:
-        print(worker.keepRunning)
 
     return M_in, M_out
 

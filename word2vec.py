@@ -24,6 +24,7 @@ class Word2Vec(object):
         '''
 
         self.n_iter = n_iter
+        self.num_proc = num_proc
         self.X, self.y, self.word_to_index, self.index_to_word = process_text(text=self.text,
                                                                               vocab_size=self.vocab_size,
                                                                               window_size=self.window_size)
@@ -35,7 +36,8 @@ class Word2Vec(object):
         self.M_out = np.random.uniform(low=-1.0, high=1.0, size=(self.vocab_size, self.embedding_size)).astype(np.float32)
 
         self.M_in, self.M_out = Hogwild(self.X, self.y, self.n_iter, self.M_in, self.M_out,
-                                        self.embedding_size, self.learning_rate, num_proc=num_proc)
+                                        self.embedding_size, self.learning_rate, num_proc=self.num_proc)
+
 
     def closest_to(self, words, n_neighbors):
         """
@@ -46,22 +48,21 @@ class Word2Vec(object):
         of the closest words to this word
         """
 
-        sub_dictionary = {key: self.word_to_index[key] for key in words}  # dictionary containing words of interest
-        words_int = list(sub_dictionary.values())
+        words_int = [self.word_to_index[key] for key in words]  # dictionary containing words of interest
 
         # Compute similarity between words
         similarity = np.zeros(shape=(len(words_int), self.vocab_size))
         for i in words_int:
-            for j in range(self.embedding_size):
-                similarity[i, j] = 1 - spatial.distance.cosine(self.M_in[i, :], self.M_in[j, :])  # cosine distance
+            for j in range(self.vocab_size + 1):
+                similarity[i, j] = spatial.distance.cosine(self.M_in[i, :], self.M_in[j, :])  # cosine distance
 
-        similarity.sort(axis=1)
+        index_sorted = np.argsort(similarity, axis=1)
 
         # Select closest neighbors
-        neighbors = similarity[:, similarity.shape[1]-n_neighbors:]
+        neighbors = index_sorted[:, :n_neighbors]
         for i in range(neighbors.shape[0]):
             for j in range(neighbors.shape[1]):
-                neighbors[i, j] = self.index_to_word(neighbors[i, j])  # Translate index to associated word
+                neighbors[i, j] = self.index_to_word[neighbors[i, j]]  # Translate index to associated word
 
         return neighbors
 
