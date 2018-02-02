@@ -7,7 +7,7 @@ import queue
 from numba import jit
 import numpy as np
 
-from utils import make_batch, stopable_thread
+from utils import make_batch, stoppable_thread
 
 
 def Hogwild(X, y, n_iter, M_in, M_out, embedding_size, learning_rate, num_proc=2):
@@ -24,13 +24,13 @@ def Hogwild(X, y, n_iter, M_in, M_out, embedding_size, learning_rate, num_proc=2
     :return: trained M_in and M_out
     '''
 
-    # Creating queue to feed the thresds
+    # Creating queue to feed the threads
     q = queue.Queue()
 
     # Initialisation of threads
     workers = []
     for _ in range(num_proc):
-        worker = stopable_thread(target=_One_Hogwild_pass, args=(q, M_in, M_out, embedding_size, learning_rate))
+        worker = stoppable_thread(target=_One_Hogwild_pass, args=(q, M_in, M_out, embedding_size, learning_rate,))
         worker.start()
         workers.append(worker)
 
@@ -39,18 +39,32 @@ def Hogwild(X, y, n_iter, M_in, M_out, embedding_size, learning_rate, num_proc=2
     # The target function in X, y
     for iter in range(n_iter):
         X_batch, y_batch = make_batch(X, y, X.shape[1])
-        for _ in X.shape()[0]:
+        for _ in range(len(X_batch)-1):
             q.put([X_batch[_], y_batch])
 
     # Shutting down threads
     for worker in workers:
-        worker.keepRunnung = False
+        worker.keepRunning = False
+
+    for worker in workers:
+        print(worker.keepRunning)
 
     return M_in, M_out
 
 
+def _One_Hogwild_pass(q, *args):
+    '''
+    :param q: queue
+    :param *args: arguments for the Hogwild pass
+    '''
+
+    context_word, target_words = q.get()
+    _One_Hogwild_pass_jitted(context_word, target_words, *args)
+    q.task_done()
+
+
 @jit(nopython=True, nogil=True)
-def _One_Hogwild_pass(q, M_in, M_out, embedding_size, learning_rate):
+def _One_Hogwild_pass_jitted(context_word, target_words, M_in, M_out, embedding_size, learning_rate):
     '''
     Performs on forward feeding and update of the Hogwild algorithm
     :param q: queue where to fetch data
@@ -58,11 +72,9 @@ def _One_Hogwild_pass(q, M_in, M_out, embedding_size, learning_rate):
     :param M_out: (np array, np.float32) [embedding_size, vocab_size]
     :param embedding_size: (int)
     :param learning_rate: (float32)
-    :return:
     '''
 
-    context_word, target_words = q.get()
-    M_in_update = np.zeros(dtype=np.float32)
+    M_in_update = np.zeros(shape=(embedding_size,), dtype=np.float32)
 
     for k in range(len(target_words)):
         target_word = target_words[k]
@@ -77,7 +89,7 @@ def _One_Hogwild_pass(q, M_in, M_out, embedding_size, learning_rate):
         for _ in range(embedding_size):
             out += M_in[context_word, _] * M_out[target_word, _]
 
-        error = label - 1 / np.exp(-out)
+        error = label - 1 / (1 + np.exp(-out))
 
         # Calculating updates
         for _ in range(embedding_size):
