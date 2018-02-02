@@ -1,32 +1,41 @@
 import numpy as np
 from scipy import spatial
 from utils import process_text
+from training_functions import Hogwild
 
 
 class Word2Vec(object):
 
-    def __init__(self, window_size, learning_rate, vocab_size, embedding_size, n_negative):
+    def __init__(self, text, window_size, learning_rate, vocab_size, embedding_size, n_negative):
 
+        self.text = text
         self.window_size = window_size
         self.learning_rate = learning_rate
         self.vocab_size = vocab_size
         self.embedding_size = embedding_size
         self.n_negative = n_negative
 
-    def fit(self, text, n_iter):
+
+    def fit(self, n_iter, num_proc=2):
+        '''
+        Trains the Word2vec
+        :param n_iter: (int)
+        :param num_proc: (int) number of parallel threads
+        '''
 
         self.n_iter = n_iter
-        self.X, self.y, self.word_to_index, self.index_to_word = process_text(text=text,
+        self.X, self.y, self.word_to_index, self.index_to_word = process_text(text=self.text,
                                                                               vocab_size=self.vocab_size,
                                                                               window_size=self.window_size)
 
         # Input layer weights
-        self.M_in = np.random.uniform(low=-1.0, high=1.0, size=(self.vocab_size, self.embedding_size))
-        self.b_in = np.zeros(self.embedding_size)
+        self.M_in = np.random.uniform(low=-1.0, high=1.0, size=(self.vocab_size, self.embedding_size)).astype(np.float32)
 
         # Output layer weights
-        self.M_out = np.random.uniform(low=-1.0, high=1.0, size=(self.embedding_size, self.vocab_size))
-        self.b_out = np.zeros(self.vocab_size)
+        self.M_out = np.random.uniform(low=-1.0, high=1.0, size=(self.embedding_size, self.vocab_size)).astype(np.float32)
+
+        self.M_in, self.M_out = Hogwild(self.X, self.y, self.n_iter, self.M_in, self.M_out,
+                                        self.embedding_size, self.learning_rate, num_proc=num_proc)
 
     def closest_to(self, words, n_neighbors):
         """
@@ -45,6 +54,7 @@ class Word2Vec(object):
         for i in words_int:
             for j in range(self.embedding_size):
                 similarity[i, j] = 1 - spatial.distance.cosine(self.M_in[i, :], self.M_in[j, :])  # cosine distance
+
         similarity.sort(axis=1)
 
         # Select closest neighbors
