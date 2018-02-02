@@ -5,31 +5,54 @@ Implementations of several parallel training functions
 
 from threading import Thread
 import queue
-import cython
 from numba import jit
 
 from utils import make_batch
 
-def Hogwild(X_train, y_train, n_iter, M_in, b_in, M_out, b_out, num_proc=2):
+
+class _stopable_thread(Thread):
+    def __init__(self, target, args):
+        Thread.__init__(self, target, args)
+
+    def run(self):
+        try:
+            if self._target:
+                self.keepRunning = True
+                while self.keepRunning:
+                    self._target(*self._args, **self._kwargs)
+
+        finally:
+            # Avoid a refcycle if the thread is running a function with
+            # an argument that has a member that points to the thread.
+            del self._target, self._args, self._kwargs
+
+
+def Hogwild(X_train, y_train, n_iter, M_in, b_in, M_out, b_out, embedding_size, K, num_proc=2):
 
     q = queue.Queue()
 
     for _ in range(num_proc):
-        worker = Thread(target=_One_Hogwild_pass, args=(q, M_in, b_in, M_out, b_out))
+        worker = _stopable_thread(target=_One_Hogwild_pass, args=(q, M_in, b_in, M_out, b_out, embedding_size))
         worker.start()
 
     for iter in range(n_iter):
-        X, y = make_batch(X_train, y_train)
+        X, y = make_batch(X_train, y_train, K)
         for _ in X.shape()[0]:
             q.put([X[_], y])
-
-        q.join()
 
     return M_in, b_in, M_out, b_out
 
 
-@jit
-def _One_Hogwild_pass(q, M_in, b_in, M_out, b_out):
-    with nogil:
+@jit(nogil=True)
+def _One_Hogwild_pass(q, M_in, b_in, M_out, b_out, embedding_size):
+
+    context_word, target_words = q.get()
+    for target_word in target_words:
+
+        out = 0
+        for _ in range(embedding_size):
+            out += M_in[target_word, _] * M_out[]
+
+
 
 
