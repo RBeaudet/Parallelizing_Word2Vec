@@ -197,6 +197,7 @@ def one_hot_vector(index, vocab_size):
 
     return temp
 
+
 # training
 
 class stoppable_thread(Thread):
@@ -208,7 +209,6 @@ class stoppable_thread(Thread):
         Thread.__init__(self, group=None, target=target, args=args)
         Thread.daemon = True
 
-
     def run(self):
         try:
             if self._target:
@@ -217,7 +217,7 @@ class stoppable_thread(Thread):
                     self._target(*self._args, **self._kwargs)
 
         finally:
-            # Avoid a refcycle if the thread is running a function with
+            # Avoid a recycle if the thread is running a function with
             # an argument that has a member that points to the thread.
             del self._target, self._args, self._kwargs
 

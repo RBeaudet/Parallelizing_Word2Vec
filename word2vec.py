@@ -35,7 +35,7 @@ class Word2Vec(object):
         # Output layer weights
         self.M_out = np.random.uniform(low=-1.0, high=1.0, size=(self.vocab_size, self.embedding_size)).astype(np.float32)
 
-
+        # Training
         self.M_in, self.M_out, self.loss, self.process_time = Hogwild(self.X, self.y, self.n_iter, self.M_in,
                                                                       self.M_out, self.embedding_size,
                                                                       self.learning_rate,

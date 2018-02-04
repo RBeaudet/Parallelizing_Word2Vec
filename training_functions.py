@@ -3,10 +3,11 @@ Implementations of several parallel training functions
 '''
 
 
-import queue
+from multiprocessing import JoinableQueue
 from numba import jit
 import numpy as np
 import time
+from multiprocessing import Process
 
 from utils import make_batch, stoppable_thread
 
@@ -25,18 +26,18 @@ def Hogwild(X, y, n_iter, M_in, M_out, embedding_size, learning_rate, window_siz
     :return: trained M_in and M_out
     '''
 
-    # For conveinience n-iter as to be a multiple of 2500
+    # For convenience n-iter as to be a multiple of 2500
     n_iter = int(n_iter/2500)*2500
 
     # Creating queue to feed the threads
-    q = queue.Queue()
+    q = JoinableQueue()
 
     # Initialisation of threads
     workers = []
     loss = [0]*int(n_iter/2500)
     process_time = [0]*int(n_iter/2500)
     for _ in range(num_proc):
-        worker = stoppable_thread(target=_One_Hogwild_pass, args=(q, loss, process_time, window_size, K,
+        worker = Process(target=_One_Hogwild_pass, args=(q, loss, process_time, window_size, K,
                                                                   M_in, M_out, embedding_size, learning_rate,))
         worker.start()
         workers.append(worker)
@@ -44,17 +45,13 @@ def Hogwild(X, y, n_iter, M_in, M_out, embedding_size, learning_rate, window_siz
     # Training loop
     # Note that workers never wait for each other, even at the end of batches, this is allowed by the sparsity of
     # The target function in X, y
-    for iter in range(n_iter):
+    for iter in range(n_iter+1):
         X_batch, y_batch = make_batch(X, y, K)
         for _ in range(len(X_batch)):
             # The queue is fed with the batch, and instructions for the recording of the error
             q.put([X_batch[_], y_batch[_, :], _ == len(X_batch)-1, iter])
 
     q.join()
-
-    # Shutting down threads
-    for worker in workers:
-        worker.keepRunning = False
 
     return M_in, M_out, loss, process_time
 
@@ -65,20 +62,22 @@ def _One_Hogwild_pass(q, loss, process_time, window_size, *args):
     :param *args: arguments for the Hogwild pass
     '''
 
-    context_word, target_words, get_info, batch_number = q.get()
+    while True:
+        context_word, target_words, get_info, batch_number = q.get()
 
-    loss[int(batch_number/2500)] += _One_Hogwild_pass_jitted(context_word, target_words, *args)
+        _One_Hogwild_pass_jitted(context_word, target_words, loss, batch_number, *args)
 
-    # Every batch we average the error
-    if (get_info) & (batch_number % 2500):
-        loss[int(batch_number/2500)] = loss[int(batch_number/2500)] / (window_size * 2500)
-        process_time[int(batch_number/2500)] = time.time()
+        # Every batch we average the error
+        if (get_info) & (batch_number % 2500 == 0):
+            print(batch_number, time.time())
+            _get_info_jitted(loss, process_time, time.time(), batch_number, window_size)
 
-    q.task_done()
+        q.task_done()
 
 
 @jit(nopython=True, nogil=True)
-def _One_Hogwild_pass_jitted(context_word, target_words, K, M_in, M_out, embedding_size, learning_rate):
+def _One_Hogwild_pass_jitted(context_word, target_words, loss, batch_number,
+                             K, M_in, M_out, embedding_size, learning_rate):
     '''
     Performs on forward feeding and update of the Hogwild algorithm
     :param context_word: (int)
@@ -120,4 +119,11 @@ def _One_Hogwild_pass_jitted(context_word, target_words, K, M_in, M_out, embeddi
     for _ in range(embedding_size):
         M_out[context_word, _] += learning_rate * M_in_update[_]
 
-    return out_error / K
+    loss[int(batch_number / 2500)] += out_error / K
+
+
+@jit(nopython=True, nogil=True)
+def _get_info_jitted(loss, process_time, t, batch_number, window_size):
+
+    loss[int(batch_number / 2500)] = loss[int(batch_number / 2500)] / (window_size * 2500)
+    process_time[int(batch_number / 2500)] = t
