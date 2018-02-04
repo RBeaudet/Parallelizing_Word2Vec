@@ -35,8 +35,12 @@ class Word2Vec(object):
         # Output layer weights
         self.M_out = np.random.uniform(low=-1.0, high=1.0, size=(self.vocab_size, self.embedding_size)).astype(np.float32)
 
-        self.M_in, self.M_out = Hogwild(self.X, self.y, self.n_iter, self.M_in, self.M_out,
-                                        self.embedding_size, self.learning_rate, num_proc=self.num_proc)
+
+        self.M_in, self.M_out, self.loss, self.process_time = Hogwild(self.X, self.y, self.n_iter, self.M_in,
+                                                                      self.M_out, self.embedding_size,
+                                                                      self.learning_rate,
+                                                                      self.window_size, self.n_negative,
+                                                                      num_proc=self.num_proc)
 
 
     def closest_to(self, words, n_neighbors):

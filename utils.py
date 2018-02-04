@@ -24,7 +24,7 @@ def process_text(text, vocab_size, window_size):
     Pre-process data before in a convenient way
     :param text: raw text document to be process
     :param vocab_size: size of the vocabulary we want to define
-    :param batch_size: number of batches, which is also the number of context words to be sampled for each target word
+    :param window_size: number of words to get when construction the window, in EACH SIDES of the target word
     :return: X [len(text_list), batch_size] context words, y [len(text_list), batch_size] target words
     """
 
@@ -153,7 +153,7 @@ def make_batch(x_train, y_train, K=5):
     y_true = y_train[batch_index]
 
     # select K negative samples
-    y_batch = np.zeros(shape=(len(x_batch), K+1))
+    y_batch = np.zeros(shape=(len(x_batch), K+1), dtype=np.int32)
     for _ in range(len(x_batch)):
         negative_samples = np.random.choice([y for y in y_train if (y not in x_batch) & (y != y_train[0])], K)
         y_batch_line = np.append(y_true, negative_samples)
