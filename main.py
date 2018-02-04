@@ -1,5 +1,7 @@
 '''Experiment'''
 
+import matplotlib.pyplot as plt
+
 from word2vec import Word2Vec
 import parameters
 
@@ -15,6 +17,11 @@ def main(text):
 
     w2v.fit(n_iter=params['n_iter'], num_proc=params['num_proc'])
 
+    plt.plot(w2v.loss)
+    plt.show()
+
+    plt.plot(w2v.process_time)
+    plt.show()
 
 
 if __name__ == '__main__':

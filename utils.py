@@ -24,7 +24,7 @@ def process_text(text, vocab_size, window_size):
     Pre-process data before in a convenient way
     :param text: raw text document to be process
     :param vocab_size: size of the vocabulary we want to define
-    :param batch_size: number of batches, which is also the number of context words to be sampled for each target word
+    :param window_size: number of words to get when construction the window, in EACH SIDES of the target word
     :return: X [len(text_list), batch_size] context words, y [len(text_list), batch_size] target words
     """
 
@@ -66,7 +66,7 @@ def building_dataset(text, vocab_size):
     :return: data (text where each word is replaced by its index), occurrence, dictionary
     """
 
-    occurrence = [['ukn', 0]] + Counter(text).most_common(vocab_size - 1)  # list of (word, occurrence)
+    occurrence = [['ukn', 0]] + Counter(text).most_common(vocab_size)  # list of (word, occurrence)
 
     # dictionary of couples (word, index)
     word_to_index = dict()
@@ -139,10 +139,32 @@ def data_train(data, window_size=2, nb_draws=2):
 
 
 # create batch data
-
 def make_batch(x_train, y_train, K=5):
     """
     Create batches for learning
+    :param x_train: array of training inputs [len(data), vocab_size]
+    :param y_train: array of training context words [len(data), vocab_size]
+    :param K: number of negative sampling
+    :return: x_batch [size = batch_size], y_batch [size = 1+K]
+    """
+
+    batch_index = random.choice(x_train.shape[0] - 1)
+    x_batch = x_train[batch_index, :]
+    y_true = y_train[batch_index]
+
+    # select K negative samples
+    y_batch = np.zeros(shape=(len(x_batch), K+1), dtype=np.int32)
+    for _ in range(len(x_batch)):
+        negative_samples = np.random.choice([y for y in y_train if (y not in x_batch) & (y != y_train[0])], K)
+        y_batch_line = np.append(y_true, negative_samples)
+        y_batch[_, :] = y_batch_line
+
+    return x_batch, y_batch
+
+
+def make_batch_SGEMM(x_train, y_train, K=5):
+    """
+    Create batches for learning with SGEMM
     :param x_train: array of training inputs [len(data), vocab_size]
     :param y_train: array of training context words [len(data), vocab_size]
     :param K: number of negative sampling
