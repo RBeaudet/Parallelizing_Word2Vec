@@ -8,11 +8,12 @@ from numba import jit
 import numpy as np
 import time
 from multiprocessing import Process
+import multiprocessing as mp
 
-from utils import make_batch, stoppable_thread
+from utils import make_batch, stoppable_thread, sharedArray
 
 
-def Hogwild(X, y, n_iter, M_in, M_out, embedding_size, learning_rate, window_size, K, num_proc=2):
+def Hogwild(X, y, n_iter, vocab_size, embedding_size, learning_rate, window_size, K, num_proc=2):
     '''
     Implementation of the Hogwild algorithm for Word2Vec
     :param X: (np array) one line is a window
@@ -20,27 +21,36 @@ def Hogwild(X, y, n_iter, M_in, M_out, embedding_size, learning_rate, window_siz
     :param n_iter: (int) number of windows to be processed
     :param M_in: (np array, np.float32) [vocab_size, embedding_size]
     :param M_out: (np array, np.float32) [embedding_size, vocab_size]
+    :param vocab_size: vocabulary size
     :param embedding_size: (int)
     :param learning_rate: (float32)
     :param num_proc: (int) number of parallel threads
     :return: trained M_in and M_out
     '''
 
+    M_in = sharedArray(base_array=np.random.uniform(low=-1.0, high=1.0, size=(vocab_size, embedding_size)))
+    M_out = sharedArray(base_array=np.random.uniform(low=-1.0, high=1.0, size=(vocab_size, embedding_size)))
+
     # For convenience n-iter as to be a multiple of 2500
     n_iter = int(n_iter/2500)*2500
 
-    # Creating queue to feed the threads
-    q = JoinableQueue()
-
     # Initialisation of threads
     workers = []
-    loss = [0]*int(n_iter/2500)
-    process_time = [0]*int(n_iter/2500)
+    queues = []
+
+    loss = np.array([0]*(int(n_iter/2500)+1))
+    loss = sharedArray(base_array=np.expand_dims(loss, axis=1))
+
+    process_time = np.array([0]*(int(n_iter/2500)+1))
+    process_time = sharedArray(base_array=np.expand_dims(process_time, axis=1))
+
     for _ in range(num_proc):
+        q = JoinableQueue()
         worker = Process(target=_One_Hogwild_pass, args=(q, loss, process_time, window_size, K,
                                                                   M_in, M_out, embedding_size, learning_rate,))
         worker.start()
         workers.append(worker)
+        queues.append(q)
 
     # Training loop
     # Note that workers never wait for each other, even at the end of batches, this is allowed by the sparsity of
@@ -49,9 +59,16 @@ def Hogwild(X, y, n_iter, M_in, M_out, embedding_size, learning_rate, window_siz
         X_batch, y_batch = make_batch(X, y, K)
         for _ in range(len(X_batch)):
             # The queue is fed with the batch, and instructions for the recording of the error
-            q.put([X_batch[_], y_batch[_, :], _ == len(X_batch)-1, iter])
+            queues[(iter*len(X_batch)+_) % num_proc].put([X_batch[_], y_batch[_, :], _ == len(X_batch)-1, iter, False])
 
-    q.join()
+    for q in queues:
+        q.join()
+
+    # Stop workers
+    for q in queues:
+        q.put([None, None, None, None, True])
+    for worker in workers:
+        worker.join()
 
     return M_in, M_out, loss, process_time
 
@@ -63,14 +80,20 @@ def _One_Hogwild_pass(q, loss, process_time, window_size, *args):
     '''
 
     while True:
-        context_word, target_words, get_info, batch_number = q.get()
+        context_word, target_words, get_info, batch_number, STOP = q.get()
+
+        # stop condition
+        if STOP:
+            break
 
         _One_Hogwild_pass_jitted(context_word, target_words, loss, batch_number, *args)
 
         # Every batch we average the error
         if (get_info) & (batch_number % 2500 == 0):
             print(batch_number, time.time())
-            _get_info_jitted(loss, process_time, time.time(), batch_number, window_size)
+            loss[int(batch_number / 2500)] = loss[int(batch_number / 2500)] / (window_size * 2500)
+            process_time[int(batch_number / 2500)] = time.time()
+            #_get_info_jitted(loss, process_time, time.time(), batch_number, window_size)
 
         q.task_done()
 
