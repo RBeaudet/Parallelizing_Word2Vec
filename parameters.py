@@ -9,6 +9,6 @@ debug_text = {
     'vocab_size': 200,
     'embedding_size': 15,
     'n_negative': 10,
-    'n_iter': 50000,
-    'num_proc': 4
+    'n_iter': 5000,
+    'num_proc': 1
 }
