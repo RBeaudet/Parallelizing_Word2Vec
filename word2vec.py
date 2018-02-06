@@ -25,16 +25,17 @@ class Word2Vec(object):
 
         self.n_iter = n_iter
         self.num_proc = num_proc
-        self.X, self.y, self.word_to_index, self.index_to_word = process_text(text=self.text,
-                                                                              vocab_size=self.vocab_size,
-                                                                              window_size=self.window_size)
+        self.X, self.y, self.word_to_index, \
+        self.index_to_word, self.occurence = process_text(text=self.text,
+                                                          vocab_size=self.vocab_size,
+                                                          window_size=self.window_size)
 
         # Training
         self.M_in, self.M_out, self.loss, self.process_time = Hogwild(self.X, self.y, self.n_iter, self.vocab_size,
                                                                       self.embedding_size,
                                                                       self.learning_rate,
                                                                       self.window_size, self.n_negative,
-                                                                      num_proc=self.num_proc)
+                                                                      self.occurence, num_proc=self.num_proc)
 
 
     def closest_to(self, words, n_neighbors):

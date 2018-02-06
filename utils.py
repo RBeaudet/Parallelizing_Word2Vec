@@ -16,7 +16,9 @@ from collections import Counter
 from numpy import random
 from threading import Thread
 import multiprocessing as mp
+from multiprocessing.sharedctypes import Array
 import ctypes
+import time
 
 
 # Complete pre-processing function
@@ -31,10 +33,10 @@ def process_text(text, vocab_size, window_size):
     """
 
     text_list = convert_text(text)  # converts document into a list of words
-    data, word_to_index, index_to_word, _ = building_dataset(text=text_list, vocab_size=vocab_size)
+    data, word_to_index, index_to_word, occurence = building_dataset(text=text_list, vocab_size=vocab_size)
     X, y = data_train(data, window_size=window_size, nb_draws=2*window_size)
 
-    return X, y, word_to_index, index_to_word
+    return X, y, word_to_index, index_to_word, occurence
 
 
 # Convert document into a list of word
@@ -141,27 +143,42 @@ def data_train(data, window_size=2, nb_draws=2):
 
 
 # create batch data
-def make_batch(x_train, y_train, K=5):
+def make_batch(x_train, y_train):
     """
     Create batches for learning
     :param x_train: array of training inputs [len(data), vocab_size]
     :param y_train: array of training context words [len(data), vocab_size]
-    :param K: number of negative sampling
     :return: x_batch [size = batch_size], y_batch [size = 1+K]
     """
 
-    batch_index = random.choice(x_train.shape[0] - 1)
+    batch_index = np.random.randint(x_train.shape[0] - 1)
     x_batch = x_train[batch_index, :]
     y_true = y_train[batch_index]
 
-    # select K negative samples
-    y_batch = np.zeros(shape=(len(x_batch), K+1), dtype=np.int32)
-    for _ in range(len(x_batch)):
-        negative_samples = np.random.choice([y for y in y_train if (y not in x_batch) & (y != y_train[0])], K)
-        y_batch_line = np.append(y_true, negative_samples)
-        y_batch[_, :] = y_batch_line
+    return x_batch, int(y_true)
 
-    return x_batch, y_batch
+
+def negative_sampling(frequence, forbidden, K=5):
+    """
+    Samples negative samplings
+    :param frequence: frequencies of words in vocabulary
+    :param forbidden: forbidden words (window)
+    :param K: (int) number of negative samplings
+    :return: (list) negative samples
+    """
+
+    frequence_cop = frequence.copy()
+
+    # Setting probability to draw forbidden words to 0 and rescaling
+    frequence_cop[forbidden] = 0
+    frequence_cop = frequence_cop/frequence_cop.sum()
+
+    out = np.random.choice([_ for _ in range(len(frequence))], K, p=frequence_cop).tolist()
+
+    # deleting useless variable
+    del frequence_cop
+
+    return out
 
 
 def make_batch_SGEMM(x_train, y_train, K=5):
@@ -226,10 +243,10 @@ class stoppable_thread(Thread):
 
 # Create a shared array for shared memory parallelization
 
-def sharedArray(base_array):
+def sharedArray(base_array, lock):
     base_shape = base_array.shape  # get shape
-    shared_base_array = mp.Array(ctypes.c_double, base_array.flatten(), lock=False)
-    shared_array = np.ctypeslib.as_array(shared_base_array)
+    shared_base_array = Array(ctypes.c_double, base_array.flatten(), lock=lock)
+    shared_array = np.frombuffer(shared_base_array)
     return shared_array.reshape(base_shape[0], base_shape[1])
 
 
@@ -247,6 +264,14 @@ if __name__ == '__main__':
     X, y = data_train(data, window_size=params['window_size'], nb_draws=2*params['window_size'])
     #print(X)
     #print(y)
-    X_batch, y_batch = make_batch(X, y, K=params['n_negative'])
+    X_batch, y_batch = make_batch(X, y)
     print(X_batch)
     print(y_batch)
+
+    frequence = np.array(occurence)[:, 1].astype(np.int)
+    start = time.time()
+    for i in range(10000):
+        X_batch, y_batch = make_batch(X, y)
+        negative = negative_sampling(frequence.copy(), X_batch.tolist(), K=10)
+        y_batch = [y_batch] + negative
+    print(time.time()-start)
