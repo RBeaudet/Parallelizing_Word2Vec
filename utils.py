@@ -15,6 +15,8 @@ import string
 from collections import Counter
 from numpy import random
 from threading import Thread
+import multiprocessing as mp
+import ctypes
 
 
 # Complete pre-processing function
@@ -197,6 +199,7 @@ def one_hot_vector(index, vocab_size):
 
     return temp
 
+
 # training
 
 class stoppable_thread(Thread):
@@ -208,7 +211,6 @@ class stoppable_thread(Thread):
         Thread.__init__(self, group=None, target=target, args=args)
         Thread.daemon = True
 
-
     def run(self):
         try:
             if self._target:
@@ -217,9 +219,18 @@ class stoppable_thread(Thread):
                     self._target(*self._args, **self._kwargs)
 
         finally:
-            # Avoid a refcycle if the thread is running a function with
+            # Avoid a recycle if the thread is running a function with
             # an argument that has a member that points to the thread.
             del self._target, self._args, self._kwargs
+
+
+# Create a shared array for shared memory parallelization
+
+def sharedArray(base_array):
+    base_shape = base_array.shape  # get shape
+    shared_base_array = mp.Array(ctypes.c_double, base_array.flatten(), lock=False)
+    shared_array = np.ctypeslib.as_array(shared_base_array)
+    return shared_array.reshape(base_shape[0], base_shape[1])
 
 
 if __name__ == '__main__':

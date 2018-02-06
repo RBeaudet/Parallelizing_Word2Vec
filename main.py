@@ -1,6 +1,7 @@
 '''Experiment'''
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 from word2vec import Word2Vec
 import parameters
@@ -17,12 +18,7 @@ def main(text):
 
     w2v.fit(n_iter=params['n_iter'], num_proc=params['num_proc'])
 
-    plt.plot(w2v.loss)
-    plt.show()
-
-    plt.plot(w2v.process_time)
-    plt.show()
-
+    print(w2v.process_time[-1]-w2v.process_time[0])
 
 if __name__ == '__main__':
     main('debug_text')
