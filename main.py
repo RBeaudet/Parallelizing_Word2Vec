@@ -18,7 +18,11 @@ def main(text):
 
     w2v.fit(n_iter=params['n_iter'], num_proc=params['num_proc'])
 
+
+    print(w2v.process_time)
     print(w2v.process_time[-1]-w2v.process_time[0])
+
+
 
 if __name__ == '__main__':
     main('debug_text')
